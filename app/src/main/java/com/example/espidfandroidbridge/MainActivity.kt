@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbManager
-import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -47,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -89,11 +89,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (!permissionReceiverRegistered) {
             val filter = IntentFilter(BridgeService.ACTION_USB_PERMISSION)
-            if (Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(permissionReceiver, filter, RECEIVER_EXPORTED)
-            } else {
-                registerReceiver(permissionReceiver, filter)
-            }
+            ContextCompat.registerReceiver(this@MainActivity, permissionReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
             permissionReceiverRegistered = true
         }
     }

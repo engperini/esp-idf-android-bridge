@@ -57,7 +57,7 @@ class BridgeService : Service() {
             addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
             addAction(UsbBridgeController.ACTION_USB_PERMISSION)
         }
-        registerReceiver(usbReceiver, filter)
+        ContextCompat.registerReceiver(this, usbReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
         BridgePreferences.load(this).also {
             BridgeStateStore.setConfig(it)
         }
