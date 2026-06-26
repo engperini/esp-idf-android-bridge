@@ -229,7 +229,7 @@ class UsbBridgeController(private val context: Context) {
         val cfg = BridgeStateStore.state.value.config
         try {
             port.setParameters(cfg.baudRate, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
-            applyBootResetLines(bootActive = false, resetActive = false)
+            applyMappedLines(port, cfg, bootActive = false, resetActive = false)
             BridgeStateStore.appendLog("Configured baud=${cfg.baudRate}")
         } catch (e: Exception) {
             BridgeStateStore.appendLog("Serial configure failed: ${e.message}")

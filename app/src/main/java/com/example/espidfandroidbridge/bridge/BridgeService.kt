@@ -107,7 +107,7 @@ class BridgeService : Service() {
 
     private fun buildNotification(text: String, config: BridgeConfig = BridgeStateStore.state.value.config) =
         NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_data_usb)
+            .setSmallIcon(android.R.drawable.sym_def_app_icon)
             .setContentTitle(text)
             .setContentText("USB/TCP bridge on 127.0.0.1:${config.tcpPort}")
             .setOngoing(true)
