@@ -1,133 +1,256 @@
 # ESP-IDF Android Bridge
 
-    Android Studio Kotlin app that bridges raw binary data between **USB serial** and **localhost TCP** for ESP32 development on Android.
+ESP-IDF Android Bridge is an Android Studio + Kotlin app that acts as a **binary-safe USB serial bridge** for ESP32 development on Android.
 
-    ## What it does
+It is designed for use with **Termux + Ubuntu proot + ESP-IDF**, so you can run `idf.py monitor`, `idf.py flash`, and related workflows while the Android app owns the USB serial connection.
 
-    - Connects to ESP32 / ESP32-S3 over USB OTG
-    - Uses `usb-serial-for-android` for CDC ACM, CH340, CP210x, and FTDI devices
-    - Runs a binary-safe TCP server on `127.0.0.1:6667`
-    - Supports DTR / RTS control
-    - Includes a control port on `127.0.0.1:6668` for boot/reset actions
-    - Provides ESP-IDF helper commands for Termux + Ubuntu proot
+## Features
 
-    ## Important limitation
+- Connects to ESP32 / ESP32-S3 over USB OTG
+- Supports common USB serial chipsets through `usb-serial-for-android`
+  - CDC ACM
+  - CH340
+  - CP210x
+  - FTDI
+- Runs a raw TCP bridge on `127.0.0.1:6667`
+- Accepts one TCP client at a time
+- Forwards **binary data** in both directions without text conversion
+- Supports DTR and RTS control
+- Provides configurable DTR/RTS mapping
+  - Invert DTR
+  - Invert RTS
+  - Swap DTR/RTS
+  - Bootloader timing
+  - Reset pulse duration
+  - Baud rate
+- Includes a separate control port on `127.0.0.1:6668`
+- Uses a foreground service for long-running bridge sessions
+- Shows live logs, byte counters, and USB/TCP state
+- Includes optional Termux integration helpers for monitor / flash / build commands
+- Includes a GitHub Actions workflow to build APKs and publish them as downloadable artifacts
 
-    Direct execution of Termux commands from a normal Android app is not guaranteed because of Android sandboxing and Termux plugin differences.
+## Downloading the app
 
-    This project therefore does **both**:
+If you do not want to build locally, the easiest path is to use **GitHub Actions artifacts**:
 
-    1. Tries a best-effort intent launch for Termux / Termux:Tasker style integrations
-    2. Always provides copyable shell scripts you can run manually in Termux
+1. Push a commit to `main` or run the workflow manually from the Actions tab
+2. Open the workflow run in GitHub
+3. Download the APK artifact from the run page
 
-    ## Project structure
+Artifacts produced by the workflow:
 
-    - `app/src/main/java/com/example/espidfandroidbridge/bridge/BridgeService.kt`
-    - `app/src/main/java/com/example/espidfandroidbridge/bridge/UsbBridgeController.kt`
-    - `app/src/main/java/com/example/espidfandroidbridge/bridge/TermuxIntegration.kt`
-    - `app/src/main/java/com/example/espidfandroidbridge/MainActivity.kt`
+- `esp-idf-android-bridge-debug-apk`
+- `esp-idf-android-bridge-release-apk` for tagged releases (`v*`)
 
-    ## Termux setup
+## What this app is for
 
-    Install these in Termux:
+The main goal is to let an Android phone or tablet act as the USB serial backend for an ESP-IDF workflow.
 
-    ```sh
-    pkg update
-    pkg install socat netcat-openbsd
-    ```
+Typical usage:
 
-    Make sure Ubuntu proot and ESP-IDF are already available, as in your current setup.
+1. Android app connects to the ESP32 board over USB OTG
+2. Termux connects to `127.0.0.1:6667`
+3. ESP-IDF tools run inside Ubuntu proot
+4. The app forwards raw bytes between USB and TCP
 
-    ## Example scripts
+This is especially useful when you want to keep ESP-IDF on Android instead of on a desktop computer.
 
-    Put these in `~/bin/` inside Termux and make them executable.
+## Important limitation
 
-    ### `espidf-monitor.sh`
+Android apps cannot always directly launch Termux commands because of sandbox restrictions and differences between Termux plugins.
 
-    ```sh
-    #!/data/data/com.termux/files/usr/bin/bash
-    set -euo pipefail
-    PROJECT="${1:-$HOME/ESP32-RoboEyes}"
-    TTY="${TTY:-$TMPDIR/ttyesp32}"
-    PORT="${PORT:-6667}"
+Because of that, this project supports two paths:
 
-    mkdir -p "$(dirname "$TTY")"
-    socat -d -d pty,raw,echo=0,link="$TTY" tcp:127.0.0.1:"$PORT" &
-    SOCAT_PID=$!
-    trap 'kill $SOCAT_PID >/dev/null 2>&1 || true' EXIT
+1. **Best-effort intent launch** for Termux / Termux:Tasker style integrations
+2. **Copyable shell scripts** that you can run manually inside Termux
 
-    cd "$PROJECT"
-    source ~/esp-idf/export.sh
-    idf.py -p "$TTY" -b 115200 monitor
-    ```
+If direct launch does not work on your device, the bridge still works normally.
 
-    ### `espidf-flash.sh`
+## Project structure
 
-    ```sh
-    #!/data/data/com.termux/files/usr/bin/bash
-    set -euo pipefail
-    PROJECT="${1:-$HOME/ESP32-RoboEyes}"
-    TTY="${TTY:-$TMPDIR/ttyesp32}"
-    PORT="${PORT:-6667}"
-    CTRL_PORT="${CTRL_PORT:-6668}"
+Important files:
 
-    printf 'BOOTLOADER
-' | nc 127.0.0.1 "$CTRL_PORT" || true
-    sleep 1
+- `app/src/main/java/com/example/espidfandroidbridge/MainActivity.kt`
+- `app/src/main/java/com/example/espidfandroidbridge/BridgeApplication.kt`
+- `app/src/main/java/com/example/espidfandroidbridge/bridge/BridgeService.kt`
+- `app/src/main/java/com/example/espidfandroidbridge/bridge/UsbBridgeController.kt`
+- `app/src/main/java/com/example/espidfandroidbridge/bridge/TermuxIntegration.kt`
+- `app/src/main/java/com/example/espidfandroidbridge/bridge/BridgeStateStore.kt`
+- `app/src/main/java/com/example/espidfandroidbridge/bridge/BridgePreferences.kt`
+- `termux-scripts/espidf-monitor.sh`
+- `termux-scripts/espidf-flash.sh`
+- `termux-scripts/espidf-build.sh`
+- `.github/workflows/android-build.yml`
 
-    mkdir -p "$(dirname "$TTY")"
-    socat -d -d pty,raw,echo=0,link="$TTY" tcp:127.0.0.1:"$PORT" &
-    SOCAT_PID=$!
-    trap 'kill $SOCAT_PID >/dev/null 2>&1 || true' EXIT
+## Screens
 
-    cd "$PROJECT"
-    source ~/esp-idf/export.sh
-    idf.py -p "$TTY" -b 115200 flash
-    ```
+### 1. Main screen
 
-    ### `espidf-build.sh`
+- USB status
+- TCP status
+- Baud rate selector
+- Connect USB button
+- Start server button
+- RX/TX counters
+- DTR/RTS toggles
+- Reset button
+- Bootloader button
 
-    ```sh
-    #!/data/data/com.termux/files/usr/bin/bash
-    set -euo pipefail
-    PROJECT="${1:-$HOME/ESP32-RoboEyes}"
+### 2. ESP-IDF screen
 
-    cd "$PROJECT"
-    source ~/esp-idf/export.sh
-    idf.py build
-    ```
+- Project path field
+- Monitor command button
+- Flash command button
+- Build command button
+- Output console
+- Copy command button
 
-    ## How the bridge works
+### 3. Settings screen
 
-    - The app owns the USB serial device
-    - Termux connects to `127.0.0.1:6667`
-    - `socat` creates a local pseudo-TTY for `idf.py`
-    - Port `6668` receives simple control commands:
-      - `DTR 1`
-      - `DTR 0`
-      - `RTS 1`
-      - `RTS 0`
-      - `RESET`
-      - `BOOTLOADER`
+- TCP port
+- Baud rate
+- DTR inversion
+- RTS inversion
+- DTR/RTS swap
+- Bootloader timing
+- Reset pulse duration
+- Selected USB driver info
+- USB device info
 
-    ## Notes
+## Termux requirements
 
-    - The bridge is binary-safe; it does not treat traffic as text.
-    - You may need to tune `Invert DTR`, `Invert RTS`, and `Swap DTR/RTS` per board wiring.
-    - Flashing works best when the board is already in bootloader mode.
-    - If the intent-based Termux launch does not work, copy the generated script and run it manually.
+In Termux, install the basic tools used by the helper scripts:
 
-    ## Build in Android Studio
+```sh
+pkg update
+pkg install socat netcat-openbsd
+```
 
-    1. Open the project folder in Android Studio
-    2. Let Gradle sync
-    3. Run on a phone with USB OTG support
-    4. Connect the ESP32 board and grant USB permission
+Make sure you already have:
 
-    ## Suggested workflow
+- Ubuntu proot installed
+- ESP-IDF installed inside Ubuntu
+- Your ESP32 project available in a known directory
 
-    1. Start the app
-    2. Connect USB
-    3. Start TCP server
-    4. Run the Termux monitor script
-    5. For flashing, use the bootloader button or the control port
+## Example Termux scripts
+
+The app includes example scripts in `termux-scripts/`.
+You can copy them to `~/bin/` in Termux or adapt them for your own setup.
+
+### `espidf-monitor.sh`
+
+```sh
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+PROJECT="${1:-$HOME/ESP32-RoboEyes}"
+TTY="${TTY:-$TMPDIR/ttyesp32}"
+PORT="${PORT:-6667}"
+
+mkdir -p "$(dirname "$TTY")"
+socat -d -d pty,raw,echo=0,link="$TTY" tcp:127.0.0.1:"$PORT" &
+SOCAT_PID=$!
+trap 'kill $SOCAT_PID >/dev/null 2>&1 || true' EXIT
+
+cd "$PROJECT"
+source ~/esp-idf/export.sh
+idf.py -p "$TTY" -b 115200 monitor
+```
+
+### `espidf-flash.sh`
+
+```sh
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+PROJECT="${1:-$HOME/ESP32-RoboEyes}"
+TTY="${TTY:-$TMPDIR/ttyesp32}"
+PORT="${PORT:-6667}"
+CTRL_PORT="${CTRL_PORT:-6668}"
+
+printf 'BOOTLOADER\n' | nc 127.0.0.1 "$CTRL_PORT" || true
+sleep 1
+
+mkdir -p "$(dirname "$TTY")"
+socat -d -d pty,raw,echo=0,link="$TTY" tcp:127.0.0.1:"$PORT" &
+SOCAT_PID=$!
+trap 'kill $SOCAT_PID >/dev/null 2>&1 || true' EXIT
+
+cd "$PROJECT"
+source ~/esp-idf/export.sh
+idf.py -p "$TTY" -b 115200 flash
+```
+
+### `espidf-build.sh`
+
+```sh
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+PROJECT="${1:-$HOME/ESP32-RoboEyes}"
+
+cd "$PROJECT"
+source ~/esp-idf/export.sh
+idf.py build
+```
+
+## How the bridge works
+
+- The Android app owns the USB serial device
+- The app exposes a raw TCP bridge on `127.0.0.1:6667`
+- Termux tools connect to that TCP port
+- `socat` creates a local pseudo-TTY for `idf.py`
+- The control port `127.0.0.1:6668` accepts simple commands:
+  - `DTR 1`
+  - `DTR 0`
+  - `RTS 1`
+  - `RTS 0`
+  - `RESET`
+  - `BOOTLOADER`
+  - `STATUS`
+
+## Binary-safe behavior
+
+This bridge is designed for **raw binary transport**.
+
+That means:
+
+- no text parsing of serial data
+- no line buffering
+- no terminal emulation assumptions
+- suitable for ESP-IDF flashing and monitor workflows
+
+## Bootloader and reset notes
+
+Different ESP32 boards wire DTR and RTS differently.
+For that reason, the app includes configurable options for:
+
+- DTR inversion
+- RTS inversion
+- DTR/RTS swap
+- bootloader timing
+- reset pulse timing
+
+If your board does not enter bootloader mode correctly on the first try, adjust those settings.
+
+## Build in Android Studio
+
+1. Open the project folder in Android Studio
+2. Let Gradle sync
+3. Build and run on a device with USB OTG support
+4. Connect the ESP32 board and grant USB permission
+
+## Recommended workflow
+
+1. Open the app
+2. Connect USB
+3. Start the TCP server
+4. Run the monitor script in Termux
+5. For flashing, use the Bootloader button or the control port
+
+## Notes
+
+- The bridge is intended for Android devices that support USB OTG host mode.
+- If intent-based Termux launch does not work on your device, use the generated scripts manually.
+- For flashing reliability, keep the board wiring and DTR/RTS mapping aligned with your USB adapter / board design.
+
+## License
+
+Add a license file before publishing publicly if you want to distribute this project.
