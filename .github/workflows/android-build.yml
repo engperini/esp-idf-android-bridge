@@ -45,6 +45,19 @@ jobs:
           set -o pipefail
           "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
+      - name: Install Gradle instrumentation agent stub
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/../lib/agents"
+          cat >/tmp/Agent.java <<'EOF'
+          public class Agent {
+            public static void premain(String args, java.lang.instrument.Instrumentation inst) {}
+          }
+          EOF
+          javac /tmp/Agent.java
+          printf 'Premain-Class: Agent\n' >/tmp/manifest.mf
+          jar cfm "$GITHUB_WORKSPACE/../lib/agents/gradle-instrumentation-agent-8.7.jar" /tmp/manifest.mf -C /tmp Agent.class
+
       - name: Build debug APK
         shell: bash
         env:
