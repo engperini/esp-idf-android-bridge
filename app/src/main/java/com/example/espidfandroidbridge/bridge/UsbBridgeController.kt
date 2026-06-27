@@ -99,6 +99,7 @@ class UsbBridgeController(private val context: Context) {
         val config = BridgeStateStore.state.value.config
         tcpJob = scope.launch { runTcpServer(config.tcpPort) }
         BridgeStateStore.setTcpRunning(true)
+        BridgeStateStore.setTcpServerStatus("TCP server starting on 127.0.0.1:${config.tcpPort}")
         BridgeStateStore.setTcpStatus("TCP server starting on 127.0.0.1:${config.tcpPort}")
         BridgeStateStore.appendLog("TCP server starting on 127.0.0.1:${config.tcpPort}")
         if (config.enableControlPort) startControlServer(config.controlPort)
@@ -122,6 +123,9 @@ class UsbBridgeController(private val context: Context) {
         controlJob = null
         BridgeStateStore.setTcpRunning(false)
         BridgeStateStore.setControlRunning(false)
+        BridgeStateStore.setTcpServerStatus("TCP server stopped")
+        BridgeStateStore.setControlStatus("Control server stopped")
+        BridgeStateStore.setBootloaderStatus("Bootloader idle")
         BridgeStateStore.setTcpStatus("TCP server stopped")
         BridgeStateStore.appendLog("TCP server stopped")
     }
@@ -138,20 +142,27 @@ class UsbBridgeController(private val context: Context) {
 
     fun resetEsp32() = scope.launch {
         val cfg = BridgeStateStore.state.value.config
+        BridgeStateStore.setBootloaderStatus("Reset pulse: asserting RESET")
         BridgeStateStore.appendLog("ESP32 reset pulse")
         applyBootResetLines(bootActive = false, resetActive = true)
         delay(cfg.resetPulseMs)
+        BridgeStateStore.setBootloaderStatus("Reset pulse: releasing RESET")
         applyBootResetLines(bootActive = false, resetActive = false)
+        BridgeStateStore.setBootloaderStatus("Reset complete")
     }
 
     fun enterBootloader() = scope.launch {
         val cfg = BridgeStateStore.state.value.config
+        BridgeStateStore.setBootloaderStatus("Bootloader: asserting BOOT+RESET")
         BridgeStateStore.appendLog("ESP32 bootloader sequence")
         applyBootResetLines(bootActive = true, resetActive = true)
         delay(cfg.resetPulseMs)
+        BridgeStateStore.setBootloaderStatus("Bootloader: releasing RESET")
         applyBootResetLines(bootActive = true, resetActive = false)
         delay(cfg.bootloaderTimingMs)
+        BridgeStateStore.setBootloaderStatus("Bootloader: releasing BOOT")
         applyBootResetLines(bootActive = false, resetActive = false)
+        BridgeStateStore.setBootloaderStatus("Bootloader ready")
     }
 
     fun updateConfig(config: BridgeConfig) {
@@ -265,6 +276,8 @@ class UsbBridgeController(private val context: Context) {
     private suspend fun runTcpServer(port: Int) {
         try {
             tcpServer = ServerSocket(port, 1, InetAddress.getByName("127.0.0.1"))
+            BridgeStateStore.setTcpServerStatus("TCP server listening on 127.0.0.1:$port")
+            BridgeStateStore.setTcpStatus("TCP server listening on 127.0.0.1:$port")
             while (scope.isActive && tcpJob?.isActive == true) {
                 val socket = tcpServer?.accept() ?: break
                 handleClient(socket)
@@ -272,6 +285,7 @@ class UsbBridgeController(private val context: Context) {
         } catch (e: IOException) {
             if (tcpJob?.isActive == true) {
                 BridgeStateStore.appendLog("TCP server error: ${e.message}")
+                BridgeStateStore.setTcpServerStatus("TCP server error: ${e.message}")
                 BridgeStateStore.setTcpStatus("TCP server error: ${e.message}")
             }
         } finally {
@@ -282,6 +296,7 @@ class UsbBridgeController(private val context: Context) {
             }
             tcpServer = null
             BridgeStateStore.setTcpRunning(false)
+            BridgeStateStore.setTcpServerStatus("TCP server stopped")
             BridgeStateStore.setTcpStatus("TCP server stopped")
         }
     }
@@ -294,7 +309,7 @@ class UsbBridgeController(private val context: Context) {
             tcpInput = socket.getInputStream()
         }
         BridgeStateStore.appendLog("TCP client connected: ${socket.inetAddress.hostAddress}:${socket.port}")
-        BridgeStateStore.setTcpStatus("TCP client connected")
+        BridgeStateStore.setTcpStatus("TCP client connected from ${socket.inetAddress.hostAddress}:${socket.port}")
         try {
             val input = socket.getInputStream()
             val buffer = ByteArray(4096)
@@ -334,10 +349,12 @@ class UsbBridgeController(private val context: Context) {
 
     private fun startControlServer(port: Int) {
         if (controlJob?.isActive == true) return
+        BridgeStateStore.setControlStatus("Control server starting on 127.0.0.1:$port")
         controlJob = scope.launch {
             try {
                 controlServer = ServerSocket(port, 1, InetAddress.getByName("127.0.0.1"))
                 BridgeStateStore.setControlRunning(true)
+                BridgeStateStore.setControlStatus("Control server listening on 127.0.0.1:$port")
                 BridgeStateStore.appendLog("Control server on 127.0.0.1:$port")
                 while (scope.isActive && controlJob?.isActive == true) {
                     val socket = controlServer?.accept() ?: break
@@ -345,6 +362,7 @@ class UsbBridgeController(private val context: Context) {
                 }
             } catch (e: IOException) {
                 BridgeStateStore.appendLog("Control server error: ${e.message}")
+                BridgeStateStore.setControlStatus("Control server error: ${e.message}")
             } finally {
                 try {
                     controlServer?.close()
@@ -352,6 +370,7 @@ class UsbBridgeController(private val context: Context) {
                 }
                 controlServer = null
                 BridgeStateStore.setControlRunning(false)
+                BridgeStateStore.setControlStatus("Control server stopped")
             }
         }
     }
@@ -365,32 +384,38 @@ class UsbBridgeController(private val context: Context) {
             reader.lineSequence().forEach { line ->
                 when (line.trim().uppercase()) {
                     "DTR 1" -> {
+                        BridgeStateStore.appendLog("Control command: DTR 1")
                         setDTR(true)
                         writer.write("OK\n")
                     }
                     "DTR 0" -> {
+                        BridgeStateStore.appendLog("Control command: DTR 0")
                         setDTR(false)
                         writer.write("OK\n")
                     }
                     "RTS 1" -> {
+                        BridgeStateStore.appendLog("Control command: RTS 1")
                         setRTS(true)
                         writer.write("OK\n")
                     }
                     "RTS 0" -> {
+                        BridgeStateStore.appendLog("Control command: RTS 0")
                         setRTS(false)
                         writer.write("OK\n")
                     }
                     "RESET" -> {
+                        BridgeStateStore.appendLog("Control command: RESET")
                         resetEsp32()
                         writer.write("OK\n")
                     }
                     "BOOTLOADER" -> {
+                        BridgeStateStore.appendLog("Control command: BOOTLOADER")
                         enterBootloader()
                         writer.write("OK\n")
                     }
                     "STATUS" -> {
                         val s = BridgeStateStore.state.value
-                        writer.write("RX=${s.rxBytes} TX=${s.txBytes} DTR=${s.dtr} RTS=${s.rts} USB=${s.usbStatus} TCP=${s.tcpStatus}\n")
+                        writer.write("RX=${s.rxBytes} TX=${s.txBytes} DTR=${s.dtr} RTS=${s.rts} USB=${s.usbStatus} TCP=${s.tcpStatus} TCP_SERVER=${s.tcpServerStatus} CTRL=${s.controlStatus} BOOT=${s.bootloaderStatus}\n")
                     }
                     else -> writer.write("ERR unknown command\n")
                 }

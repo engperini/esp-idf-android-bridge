@@ -15,7 +15,7 @@ object TermuxIntegration {
         appendLine("TTY=${shellQuote(config.ttyPath.ifBlank { "/tmp/ttyesp32" })}")
         appendLine("PORT=${config.tcpPort}")
         appendLine("BAUD=${config.baudRate}")
-        appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" TTY=\"${'$'}TTY\" PORT=\"${'$'}PORT\" BAUD=\"${'$'}BAUD\" bash -lc 'cd /root/esp-idf && . ./export.sh; mkdir -p \"$(dirname \"${'$'}TTY\")\"; socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" >/tmp/ttyesp32.log 2>&1 & SOCAT_PID=${'$'}!; trap \"kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true\" EXIT; cd \"${'$'}PROJECT\"; idf.py -p \"${'$'}TTY\" -b \"${'$'}BAUD\" monitor'")
+        appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" TTY=\"${'$'}TTY\" PORT=\"${'$'}PORT\" BAUD=\"${'$'}BAUD\" bash -lc 'cd /root/esp-idf && . ./export.sh; mkdir -p \"${'$'}(dirname \"${'$'}TTY\")\"; socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" >/tmp/ttyesp32.log 2>&1 & SOCAT_PID=${'$'}!; trap \"kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true\" EXIT; cd \"${'$'}PROJECT\"; idf.py -p \"${'$'}TTY\" -b \"${'$'}BAUD\" monitor'")
     }
 
     fun buildFlashScript(config: BridgeConfig): String = buildString {
@@ -27,9 +27,30 @@ object TermuxIntegration {
         appendLine("PORT=${config.tcpPort}")
         appendLine("CTRL_PORT=${config.controlPort}")
         appendLine("BAUD=${config.baudRate}")
-        appendLine("printf 'BOOTLOADER\\n' | nc 127.0.0.1 \"${'$'}CTRL_PORT\" || true")
+        appendLine("ctrl_cmd() {")
+        appendLine("  local cmd=\"${'$'}1\"")
+        appendLine("  local response=\"\"")
+        appendLine("  if ! exec 3<>\"/dev/tcp/127.0.0.1/${'$'}CTRL_PORT\"; then")
+        appendLine("    echo '[bridge] control port unavailable'")
+        appendLine("    return 1")
+        appendLine("  fi")
+        appendLine("  IFS= read -r -t 5 _ <&3 || true")
+        appendLine("  printf '%s\\n' \"${'$'}cmd\" >&3")
+        appendLine("  IFS= read -r -t 5 response <&3 || true")
+        appendLine("  exec 3<&- 3>&-")
+        appendLine("  printf '%s\\n' \"${'$'}response\"")
+        appendLine("}")
+        appendLine("echo '[bridge] control preflight: STATUS'")
+        appendLine("status_before=${'$'}(ctrl_cmd STATUS)")
+        appendLine("echo \"[bridge] ${'$'}status_before\"")
+        appendLine("echo '[bridge] control preflight: BOOTLOADER'")
+        appendLine("boot_ack=${'$'}(ctrl_cmd BOOTLOADER)")
+        appendLine("echo \"[bridge] ${'$'}boot_ack\"")
         appendLine("sleep 1")
-        appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" TTY=\"${'$'}TTY\" PORT=\"${'$'}PORT\" BAUD=\"${'$'}BAUD\" bash -lc 'cd /root/esp-idf && . ./export.sh; mkdir -p \"$(dirname \"${'$'}TTY\")\"; socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" >/tmp/ttyesp32.log 2>&1 & SOCAT_PID=${'$'}!; trap \"kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true\" EXIT; cd \"${'$'}PROJECT\"; idf.py -p \"${'$'}TTY\" -b \"${'$'}BAUD\" flash'")
+        appendLine("echo '[bridge] control post-check: STATUS'")
+        appendLine("status_after=${'$'}(ctrl_cmd STATUS)")
+        appendLine("echo \"[bridge] ${'$'}status_after\"")
+        appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" TTY=\"${'$'}TTY\" PORT=\"${'$'}PORT\" BAUD=\"${'$'}BAUD\" bash -lc 'cd /root/esp-idf && . ./export.sh; mkdir -p \"${'$'}(dirname \"${'$'}TTY\")\"; socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" >/tmp/ttyesp32.log 2>&1 & SOCAT_PID=${'$'}!; trap \"kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true\" EXIT; cd \"${'$'}PROJECT\"; idf.py -p \"${'$'}TTY\" -b \"${'$'}BAUD\" flash'")
     }
 
     fun buildBuildScript(config: BridgeConfig): String = buildString {

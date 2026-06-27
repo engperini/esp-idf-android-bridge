@@ -12,6 +12,9 @@ object BridgeStateStore {
     fun setSelectedTab(index: Int) = mutate { it.copy(selectedTab = index) }
     fun setUsbStatus(text: String) = mutate { it.copy(usbStatus = text) }
     fun setTcpStatus(text: String) = mutate { it.copy(tcpStatus = text) }
+    fun setTcpServerStatus(text: String) = mutate { it.copy(tcpServerStatus = text) }
+    fun setControlStatus(text: String) = mutate { it.copy(controlStatus = text) }
+    fun setBootloaderStatus(text: String) = mutate { it.copy(bootloaderStatus = text) }
     fun setUsbInfo(driver: String, device: String) = mutate { it.copy(usbDriverInfo = driver, usbDeviceInfo = device) }
     fun setSerialConnected(connected: Boolean) = mutate { it.copy(serialConnected = connected) }
     fun setTcpRunning(running: Boolean) = mutate { it.copy(tcpRunning = running) }

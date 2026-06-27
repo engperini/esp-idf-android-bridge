@@ -232,7 +232,10 @@ private fun MainScreen(
 ) {
     Text("ESP-IDF Android Bridge", style = MaterialTheme.typography.headlineSmall)
     Text(state.usbStatus)
-    Text(state.tcpStatus)
+    Text("TCP server: ${state.tcpServerStatus}")
+    Text("Control port: ${state.controlStatus}")
+    Text("Bootloader: ${state.bootloaderStatus}")
+    Text("Client/bridge: ${state.tcpStatus}")
     Text("Driver: ${state.usbDriverInfo}")
     Text("Device: ${state.usbDeviceInfo}")
     Text("RX ${state.rxBytes} bytes • TX ${state.txBytes} bytes")
