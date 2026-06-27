@@ -24,7 +24,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -110,7 +113,7 @@ private fun App(state: com.example.espidfandroidbridge.bridge.BridgeUiState) {
     val clipboard = LocalClipboardManager.current
     var config by remember(state.config) { mutableStateOf(state.config) }
     var projectPath by remember(state.config.projectPath) { mutableStateOf(state.config.projectPath) }
-    val tabs = listOf("Main", "ESP-IDF", "Settings")
+    val tabs = listOf("Main", "ESP-IDF", "Bootloader", "Settings")
 
     Scaffold(
         bottomBar = {
@@ -178,7 +181,33 @@ private fun App(state: com.example.espidfandroidbridge.bridge.BridgeUiState) {
                         BridgeStateStore.setTermuxMessage("Flash script copied")
                     }
                 )
-                2 -> SettingsScreen(
+                2 -> BootloaderLabScreen(
+                    state = state,
+                    onEnterBootloader = { BridgeService.start(context, BridgeService.ACTION_BOOTLOADER) },
+                    onReset = { BridgeService.start(context, BridgeService.ACTION_RESET) },
+                    onSetDtr = { BridgeService.start(context, BridgeService.ACTION_SET_DTR, it) },
+                    onSetRts = { BridgeService.start(context, BridgeService.ACTION_SET_RTS, it) },
+                    onApplyPreset = { preset ->
+                        val updated = when (preset) {
+                            BootPreset.DEFAULT -> state.config.copy(invertDtr = false, invertRts = false, swapDtrRts = false)
+                            BootPreset.SWAP -> state.config.copy(swapDtrRts = true)
+                            BootPreset.INVERT_DTR -> state.config.copy(invertDtr = true)
+                            BootPreset.INVERT_RTS -> state.config.copy(invertRts = true)
+                            BootPreset.SWAP_INVERT -> state.config.copy(swapDtrRts = true, invertDtr = true, invertRts = true)
+                        }
+                        BridgePreferences.save(context, updated)
+                        BridgeStateStore.setConfig(updated)
+                        BridgeService.start(context, BridgeService.ACTION_UPDATE_CONFIG)
+                        BridgeStateStore.setTermuxMessage("Bootloader preset applied: ${preset.label}")
+                    },
+                    onProbe = {
+                        val updated = state.config.copy(projectPath = projectPath)
+                        BridgePreferences.save(context, updated)
+                        BridgeStateStore.setConfig(updated)
+                        runTermux(context, clipboard, updated, mode = "probe")
+                    }
+                )
+                3 -> SettingsScreen(
                     config = config,
                     driverInfo = state.usbDriverInfo,
                     deviceInfo = state.usbDeviceInfo,
@@ -312,6 +341,81 @@ private fun EspIdfScreen(
     }
 }
 
+private enum class BootPreset(val label: String) {
+    DEFAULT("Default"),
+    SWAP("Swap DTR/RTS"),
+    INVERT_DTR("Invert DTR"),
+    INVERT_RTS("Invert RTS"),
+    SWAP_INVERT("Swap + Invert both");
+}
+
+@Composable
+private fun BootloaderLabScreen(
+    state: com.example.espidfandroidbridge.bridge.BridgeUiState,
+    onEnterBootloader: () -> Unit,
+    onReset: () -> Unit,
+    onSetDtr: (Boolean) -> Unit,
+    onSetRts: (Boolean) -> Unit,
+    onApplyPreset: (BootPreset) -> Unit,
+    onProbe: () -> Unit,
+) {
+    Text("Bootloader lab", style = MaterialTheme.typography.headlineSmall)
+    Text("Use this page to force BOOT/RESET combinations and validate which one enters ROM download mode.")
+    Spacer(Modifier.height(8.dp))
+    Text("Current status", style = MaterialTheme.typography.titleMedium)
+    Text("USB: ${state.usbStatus}")
+    Text("Control: ${state.controlStatus}")
+    Text("Bootloader: ${state.bootloaderStatus}")
+    Text("DTR: ${state.dtr} • RTS: ${state.rts}")
+    Spacer(Modifier.height(12.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = onEnterBootloader) {
+            Icon(Icons.Default.Psychology, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("Auto BOOT")
+        }
+        Button(onClick = onReset) {
+            Icon(Icons.Default.Build, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("Reset")
+        }
+        OutlinedButton(onClick = onProbe) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("Read chip_id")
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    Text("Manual line control", style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { onSetDtr(true) }) { Text("DTR 1") }
+        OutlinedButton(onClick = { onSetDtr(false) }) { Text("DTR 0") }
+        OutlinedButton(onClick = { onSetRts(true) }) { Text("RTS 1") }
+        OutlinedButton(onClick = { onSetRts(false) }) { Text("RTS 0") }
+    }
+    Spacer(Modifier.height(8.dp))
+    Text("Boot combos", style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = { onApplyPreset(BootPreset.DEFAULT) }) { Text("Default") }
+        Button(onClick = { onApplyPreset(BootPreset.SWAP) }) { Text("Swap") }
+        Button(onClick = { onApplyPreset(BootPreset.INVERT_DTR) }) { Text("Invert DTR") }
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = { onApplyPreset(BootPreset.INVERT_RTS) }) { Text("Invert RTS") }
+        Button(onClick = { onApplyPreset(BootPreset.SWAP_INVERT) }) { Text("Swap + Invert") }
+    }
+    Spacer(Modifier.height(12.dp))
+    Card(colors = CardDefaults.cardColors()) {
+        Column(Modifier.padding(12.dp)) {
+            Text("Manual recipe", style = MaterialTheme.typography.titleMedium)
+            Text("1) Enter BOOT+RESET\n2) Release RESET\n3) Release BOOT\n4) Run Read chip_id")
+        }
+    }
+    Spacer(Modifier.height(12.dp))
+    Text("Tip: if the chip_id read fails, try a different preset or timing in Settings.")
+}
+
 @Composable
 private fun SettingsScreen(
     config: BridgeConfig,
@@ -399,6 +503,7 @@ private fun runTermux(context: Context, clipboard: androidx.compose.ui.platform.
     val command = when (mode) {
         "flash" -> TermuxIntegration.buildFlashScript(config)
         "monitor" -> TermuxIntegration.buildMonitorScript(config)
+        "probe" -> TermuxIntegration.buildBootloaderProbeScript(config)
         else -> TermuxIntegration.buildBuildScript(config)
     }
     clipboard.setText(AnnotatedString(command))

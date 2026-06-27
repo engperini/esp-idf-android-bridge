@@ -61,6 +61,15 @@ object TermuxIntegration {
         appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" bash -lc 'cd /root/esp-idf && . ./export.sh && cd \"${'$'}PROJECT\" && idf.py build'")
     }
 
+    fun buildBootloaderProbeScript(config: BridgeConfig): String = buildString {
+        appendLine("#!/data/data/com.termux/files/usr/bin/bash")
+        appendLine("set -euo pipefail")
+        appendLine("TTY=${shellQuote(config.ttyPath.ifBlank { "/tmp/ttyesp32" })}")
+        appendLine("PORT=${config.tcpPort}")
+        appendLine("BAUD=${config.baudRate}")
+        appendLine("proot-distro login ubuntu -- env TTY=\"${'$'}TTY\" PORT=\"${'$'}PORT\" BAUD=\"${'$'}BAUD\" bash -lc 'cd /root/esp-idf && . ./export.sh; mkdir -p \"${'$'}(dirname \"${'$'}TTY\")\"; socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" >/tmp/ttyesp32.log 2>&1 & SOCAT_PID=${'$'}!; trap \"kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true\" EXIT; python -m esptool --chip esp32s3 -p \"${'$'}TTY\" -b \"${'$'}BAUD\" --before no_reset --after no_reset chip_id'")
+    }
+
     fun tryLaunchTermuxCommand(context: Context, command: String): Boolean {
         val candidates = listOf(
             Intent("com.termux.RUN_COMMAND").setPackage("com.termux"),
