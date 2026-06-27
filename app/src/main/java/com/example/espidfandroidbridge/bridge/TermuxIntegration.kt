@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.core.content.ContextCompat
 
 object TermuxIntegration {
     fun buildMonitorScript(config: BridgeConfig): String = buildString {
@@ -83,25 +84,22 @@ object TermuxIntegration {
     }
 
     fun tryLaunchTermuxCommand(context: Context, command: String): Boolean {
-        val candidates = listOf(
-            Intent("com.termux.RUN_COMMAND").setPackage("com.termux"),
-            Intent("com.termux.tasker.RUN_COMMAND").setPackage("com.termux.tasker"),
-            Intent(Intent.ACTION_SEND).setPackage("com.termux")
-        )
-        for (intent in candidates) {
-            val prepared = intent.apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                if (action == Intent.ACTION_SEND) type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, command)
-                putExtra("com.termux.app.extra.COMMAND", command)
-            }
-            if (prepared.resolveActivity(context.packageManager) != null) {
-                context.startActivity(prepared)
-                return true
-            }
+        val intent = Intent("com.termux.RUN_COMMAND").apply {
+            setClassName("com.termux", "com.termux.app.RunCommandService")
+            putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/usr/bin/bash")
+            putExtra("com.termux.RUN_COMMAND_STDIN", command)
+            putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
+            putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
+            putExtra("com.termux.RUN_COMMAND_COMMAND_LABEL", "ESP-IDF Android Bridge")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        copyToClipboard(context, command)
-        return false
+        return runCatching {
+            ContextCompat.startForegroundService(context, intent)
+            true
+        }.getOrElse {
+            copyToClipboard(context, command)
+            false
+        }
     }
 
     fun copyToClipboard(context: Context, command: String) {
