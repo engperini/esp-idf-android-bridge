@@ -12,16 +12,10 @@ object TermuxIntegration {
         appendLine("#!/data/data/com.termux/files/usr/bin/bash")
         appendLine("set -euo pipefail")
         appendLine("PROJECT=${shellQuote(project)}")
-        appendLine("TTY=${shellQuote(config.ttyPath)}")
+        appendLine("TTY=${shellQuote(config.ttyPath.ifBlank { "/tmp/ttyesp32" })}")
         appendLine("PORT=${config.tcpPort}")
         appendLine("BAUD=${config.baudRate}")
-        appendLine("mkdir -p \"${'$'}(dirname \"${'$'}TTY\")\"")
-        appendLine("socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" &")
-        appendLine("SOCAT_PID=${'$'}!")
-        appendLine("trap 'kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true' EXIT")
-        appendLine("cd \"${'$'}PROJECT\"")
-        appendLine("source ~/esp-idf/export.sh")
-        appendLine("idf.py -p \"${'$'}TTY\" -b \"${'$'}BAUD\" monitor")
+        appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" TTY=\"${'$'}TTY\" PORT=\"${'$'}PORT\" BAUD=\"${'$'}BAUD\" bash -lc 'cd /root/esp-idf && . ./export.sh && mkdir -p \"$(dirname \"${'$'}TTY\")\" && socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" & SOCAT_PID=${'$'}!; trap \"kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true\" EXIT; cd \"${'$'}PROJECT\"; idf.py -p \"${'$'}TTY\" -b \"${'$'}BAUD\" monitor'")
     }
 
     fun buildFlashScript(config: BridgeConfig): String = buildString {
@@ -29,19 +23,13 @@ object TermuxIntegration {
         appendLine("#!/data/data/com.termux/files/usr/bin/bash")
         appendLine("set -euo pipefail")
         appendLine("PROJECT=${shellQuote(project)}")
-        appendLine("TTY=${shellQuote(config.ttyPath)}")
+        appendLine("TTY=${shellQuote(config.ttyPath.ifBlank { "/tmp/ttyesp32" })}")
         appendLine("PORT=${config.tcpPort}")
         appendLine("CTRL_PORT=${config.controlPort}")
         appendLine("BAUD=${config.baudRate}")
         appendLine("printf 'BOOTLOADER\\n' | nc 127.0.0.1 \"${'$'}CTRL_PORT\" || true")
         appendLine("sleep 1")
-        appendLine("mkdir -p \"${'$'}(dirname \"${'$'}TTY\")\"")
-        appendLine("socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" &")
-        appendLine("SOCAT_PID=${'$'}!")
-        appendLine("trap 'kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true' EXIT")
-        appendLine("cd \"${'$'}PROJECT\"")
-        appendLine("source ~/esp-idf/export.sh")
-        appendLine("idf.py -p \"${'$'}TTY\" -b \"${'$'}BAUD\" flash")
+        appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" TTY=\"${'$'}TTY\" PORT=\"${'$'}PORT\" BAUD=\"${'$'}BAUD\" bash -lc 'cd /root/esp-idf && . ./export.sh && mkdir -p \"$(dirname \"${'$'}TTY\")\" && socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" & SOCAT_PID=${'$'}!; trap \"kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true\" EXIT; cd \"${'$'}PROJECT\"; idf.py -p \"${'$'}TTY\" -b \"${'$'}BAUD\" flash'")
     }
 
     fun buildBuildScript(config: BridgeConfig): String = buildString {
@@ -49,9 +37,7 @@ object TermuxIntegration {
         appendLine("#!/data/data/com.termux/files/usr/bin/bash")
         appendLine("set -euo pipefail")
         appendLine("PROJECT=${shellQuote(project)}")
-        appendLine("cd \"${'$'}PROJECT\"")
-        appendLine("source ~/esp-idf/export.sh")
-        appendLine("idf.py build")
+        appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" bash -lc 'cd /root/esp-idf && . ./export.sh && cd \"${'$'}PROJECT\" && idf.py build'")
     }
 
     fun tryLaunchTermuxCommand(context: Context, command: String): Boolean {

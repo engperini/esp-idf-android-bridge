@@ -143,17 +143,18 @@ You can copy them to `~/bin/` in Termux or adapt them for your own setup.
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 PROJECT="${1:-$HOME/ESP32-RoboEyes}"
-TTY="${TTY:-$TMPDIR/ttyesp32}"
+TTY="${TTY:-/tmp/ttyesp32}"
 PORT="${PORT:-6667}"
 
-mkdir -p "$(dirname "$TTY")"
-socat -d -d pty,raw,echo=0,link="$TTY" tcp:127.0.0.1:"$PORT" &
-SOCAT_PID=$!
-trap 'kill $SOCAT_PID >/dev/null 2>&1 || true' EXIT
-
-cd "$PROJECT"
-source ~/esp-idf/export.sh
-idf.py -p "$TTY" -b 115200 monitor
+proot-distro login ubuntu -- env PROJECT="$PROJECT" TTY="$TTY" PORT="$PORT" bash -lc '
+  cd /root/esp-idf && . ./export.sh &&
+  mkdir -p "$(dirname "$TTY")" &&
+  socat -d -d pty,raw,echo=0,link="$TTY" tcp:127.0.0.1:"$PORT" &
+  SOCAT_PID=$!
+  trap "kill $SOCAT_PID >/dev/null 2>&1 || true" EXIT
+  cd "$PROJECT"
+  idf.py -p "$TTY" -b 115200 monitor
+'
 ```
 
 ### `espidf-flash.sh`
@@ -162,21 +163,22 @@ idf.py -p "$TTY" -b 115200 monitor
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 PROJECT="${1:-$HOME/ESP32-RoboEyes}"
-TTY="${TTY:-$TMPDIR/ttyesp32}"
+TTY="${TTY:-/tmp/ttyesp32}"
 PORT="${PORT:-6667}"
 CTRL_PORT="${CTRL_PORT:-6668}"
 
 printf 'BOOTLOADER\n' | nc 127.0.0.1 "$CTRL_PORT" || true
 sleep 1
 
-mkdir -p "$(dirname "$TTY")"
-socat -d -d pty,raw,echo=0,link="$TTY" tcp:127.0.0.1:"$PORT" &
-SOCAT_PID=$!
-trap 'kill $SOCAT_PID >/dev/null 2>&1 || true' EXIT
-
-cd "$PROJECT"
-source ~/esp-idf/export.sh
-idf.py -p "$TTY" -b 115200 flash
+proot-distro login ubuntu -- env PROJECT="$PROJECT" TTY="$TTY" PORT="$PORT" bash -lc '
+  cd /root/esp-idf && . ./export.sh &&
+  mkdir -p "$(dirname "$TTY")" &&
+  socat -d -d pty,raw,echo=0,link="$TTY" tcp:127.0.0.1:"$PORT" &
+  SOCAT_PID=$!
+  trap "kill $SOCAT_PID >/dev/null 2>&1 || true" EXIT
+  cd "$PROJECT"
+  idf.py -p "$TTY" -b 115200 flash
+'
 ```
 
 ### `espidf-build.sh`
@@ -186,9 +188,11 @@ idf.py -p "$TTY" -b 115200 flash
 set -euo pipefail
 PROJECT="${1:-$HOME/ESP32-RoboEyes}"
 
-cd "$PROJECT"
-source ~/esp-idf/export.sh
-idf.py build
+proot-distro login ubuntu -- env PROJECT="$PROJECT" bash -lc '
+  cd /root/esp-idf && . ./export.sh &&
+  cd "$PROJECT"
+  idf.py build
+'
 ```
 
 ## How the bridge works
