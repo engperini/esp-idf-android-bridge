@@ -205,6 +205,12 @@ private fun App(state: com.example.espidfandroidbridge.bridge.BridgeUiState) {
                         BridgePreferences.save(context, updated)
                         BridgeStateStore.setConfig(updated)
                         runTermux(context, clipboard, updated, mode = "probe")
+                    },
+                    onProbeFlash = {
+                        val updated = state.config.copy(projectPath = projectPath)
+                        BridgePreferences.save(context, updated)
+                        BridgeStateStore.setConfig(updated)
+                        runTermux(context, clipboard, updated, mode = "flash-id")
                     }
                 )
                 3 -> SettingsScreen(
@@ -358,6 +364,7 @@ private fun BootloaderLabScreen(
     onSetRts: (Boolean) -> Unit,
     onApplyPreset: (BootPreset) -> Unit,
     onProbe: () -> Unit,
+    onProbeFlash: () -> Unit,
 ) {
     Text("Bootloader lab", style = MaterialTheme.typography.headlineSmall)
     Text("Use this page to force BOOT/RESET combinations and validate which one enters ROM download mode.")
@@ -383,6 +390,11 @@ private fun BootloaderLabScreen(
             Icon(Icons.Default.PlayArrow, contentDescription = null)
             Spacer(Modifier.width(4.dp))
             Text("Read chip_id")
+        }
+        OutlinedButton(onClick = onProbeFlash) {
+            Icon(Icons.Default.ContentCopy, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("Read flash_id")
         }
     }
     Spacer(Modifier.height(8.dp))
@@ -504,6 +516,7 @@ private fun runTermux(context: Context, clipboard: androidx.compose.ui.platform.
         "flash" -> TermuxIntegration.buildFlashScript(config)
         "monitor" -> TermuxIntegration.buildMonitorScript(config)
         "probe" -> TermuxIntegration.buildBootloaderProbeScript(config)
+        "flash-id" -> TermuxIntegration.buildFlashIdScript(config)
         else -> TermuxIntegration.buildBuildScript(config)
     }
     clipboard.setText(AnnotatedString(command))
