@@ -1,17 +1,21 @@
 package com.example.espidfandroidbridge.bridge
 
+const val DEFAULT_PROJECT_PATH = "/root/ESP32-RoboEyes"
+const val DEFAULT_FLASH_ARGS = "--before no_reset --after no_reset write_flash @flash_args"
+
 data class BridgeConfig(
     val tcpPort: Int = 6667,
     val controlPort: Int = 6668,
     val baudRate: Int = 115200,
     val invertDtr: Boolean = false,
     val invertRts: Boolean = false,
-    val swapDtrRts: Boolean = false,
+    val swapDtrRts: Boolean = true,
     val bootloaderTimingMs: Long = 250,
     val resetPulseMs: Long = 120,
     val keepScreenOn: Boolean = false,
     val enableControlPort: Boolean = true,
-    val projectPath: String = "",
+    val projectPath: String = DEFAULT_PROJECT_PATH,
+    val flashArgs: String = DEFAULT_FLASH_ARGS,
     val ttyPath: String = "/tmp/ttyesp32"
 )
 

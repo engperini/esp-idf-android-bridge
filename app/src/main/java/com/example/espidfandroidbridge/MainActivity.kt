@@ -113,7 +113,8 @@ private fun App(state: com.example.espidfandroidbridge.bridge.BridgeUiState) {
     val clipboard = LocalClipboardManager.current
     var config by remember(state.config) { mutableStateOf(state.config) }
     var projectPath by remember(state.config.projectPath) { mutableStateOf(state.config.projectPath) }
-    val tabs = listOf("Main", "ESP-IDF", "Bootloader", "Settings")
+    var flashArgs by remember(state.config.flashArgs) { mutableStateOf(state.config.flashArgs) }
+    val tabs = listOf("Main", "ESP-IDF", "Settings")
 
     Scaffold(
         bottomBar = {
@@ -142,7 +143,6 @@ private fun App(state: com.example.espidfandroidbridge.bridge.BridgeUiState) {
                     onConnectUsb = { requestUsbPermission(context) },
                     onStartTcp = { BridgeService.start(context, BridgeService.ACTION_START_TCP) },
                     onStopTcp = { BridgeService.start(context, BridgeService.ACTION_STOP_TCP) },
-                    onBootloader = { BridgeService.start(context, BridgeService.ACTION_BOOTLOADER) },
                     onReset = { BridgeService.start(context, BridgeService.ACTION_RESET) },
                     onToggleDtr = { BridgeService.start(context, BridgeService.ACTION_SET_DTR, it) },
                     onToggleRts = { BridgeService.start(context, BridgeService.ACTION_SET_RTS, it) },
@@ -155,65 +155,42 @@ private fun App(state: com.example.espidfandroidbridge.bridge.BridgeUiState) {
                 1 -> EspIdfScreen(
                     state = state,
                     projectPath = projectPath,
+                    flashArgs = flashArgs,
                     onProjectPathChange = { projectPath = it },
+                    onFlashArgsChange = { flashArgs = it },
                     onBuild = {
-                        val updated = state.config.copy(projectPath = projectPath)
+                        val updated = state.config.copy(projectPath = projectPath, flashArgs = flashArgs)
                         BridgePreferences.save(context, updated)
                         BridgeStateStore.setConfig(updated)
                         runTermux(context, clipboard, updated, mode = "build")
                     },
                     onMonitor = {
-                        val updated = state.config.copy(projectPath = projectPath)
+                        val updated = state.config.copy(projectPath = projectPath, flashArgs = flashArgs)
                         BridgePreferences.save(context, updated)
                         BridgeStateStore.setConfig(updated)
                         runTermux(context, clipboard, updated, mode = "monitor")
                     },
                     onFlash = {
-                        val updated = state.config.copy(projectPath = projectPath)
+                        val updated = state.config.copy(projectPath = projectPath, flashArgs = flashArgs)
                         BridgePreferences.save(context, updated)
                         BridgeStateStore.setConfig(updated)
                         runTermux(context, clipboard, updated, mode = "flash")
                     },
+                    onEnterBootloader = { BridgeService.start(context, BridgeService.ACTION_BOOTLOADER) },
+                    onReadChipId = {
+                        val updated = state.config.copy(projectPath = projectPath, flashArgs = flashArgs)
+                        BridgePreferences.save(context, updated)
+                        BridgeStateStore.setConfig(updated)
+                        runTermux(context, clipboard, updated, mode = "read-chip-id")
+                    },
                     onCopy = {
-                        val updated = state.config.copy(projectPath = projectPath)
+                        val updated = state.config.copy(projectPath = projectPath, flashArgs = flashArgs)
                         val text = TermuxIntegration.buildFlashScript(updated)
                         clipboard.setText(AnnotatedString(text))
                         BridgeStateStore.setTermuxMessage("Flash script copied")
                     }
                 )
-                2 -> BootloaderLabScreen(
-                    state = state,
-                    onEnterBootloader = { BridgeService.start(context, BridgeService.ACTION_BOOTLOADER) },
-                    onReset = { BridgeService.start(context, BridgeService.ACTION_RESET) },
-                    onSetDtr = { BridgeService.start(context, BridgeService.ACTION_SET_DTR, it) },
-                    onSetRts = { BridgeService.start(context, BridgeService.ACTION_SET_RTS, it) },
-                    onApplyPreset = { preset ->
-                        val updated = when (preset) {
-                            BootPreset.DEFAULT -> state.config.copy(invertDtr = false, invertRts = false, swapDtrRts = false)
-                            BootPreset.SWAP -> state.config.copy(swapDtrRts = true)
-                            BootPreset.INVERT_DTR -> state.config.copy(invertDtr = true)
-                            BootPreset.INVERT_RTS -> state.config.copy(invertRts = true)
-                            BootPreset.SWAP_INVERT -> state.config.copy(swapDtrRts = true, invertDtr = true, invertRts = true)
-                        }
-                        BridgePreferences.save(context, updated)
-                        BridgeStateStore.setConfig(updated)
-                        BridgeService.start(context, BridgeService.ACTION_UPDATE_CONFIG)
-                        BridgeStateStore.setTermuxMessage("Bootloader preset applied: ${preset.label}")
-                    },
-                    onProbe = {
-                        val updated = state.config.copy(projectPath = projectPath)
-                        BridgePreferences.save(context, updated)
-                        BridgeStateStore.setConfig(updated)
-                        runTermux(context, clipboard, updated, mode = "probe")
-                    },
-                    onProbeFlash = {
-                        val updated = state.config.copy(projectPath = projectPath)
-                        BridgePreferences.save(context, updated)
-                        BridgeStateStore.setConfig(updated)
-                        runTermux(context, clipboard, updated, mode = "flash-id")
-                    }
-                )
-                3 -> SettingsScreen(
+                2 -> SettingsScreen(
                     config = config,
                     driverInfo = state.usbDriverInfo,
                     deviceInfo = state.usbDeviceInfo,
@@ -259,7 +236,6 @@ private fun MainScreen(
     onConnectUsb: () -> Unit,
     onStartTcp: () -> Unit,
     onStopTcp: () -> Unit,
-    onBootloader: () -> Unit,
     onReset: () -> Unit,
     onToggleDtr: (Boolean) -> Unit,
     onToggleRts: (Boolean) -> Unit,
@@ -284,7 +260,6 @@ private fun MainScreen(
     }
     Spacer(Modifier.height(8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = onBootloader) { Text("Enter Bootloader") }
         Button(onClick = onReset) { Text("Reset ESP32") }
     }
     Spacer(Modifier.height(8.dp))
@@ -306,12 +281,17 @@ private fun MainScreen(
 private fun EspIdfScreen(
     state: com.example.espidfandroidbridge.bridge.BridgeUiState,
     projectPath: String,
+    flashArgs: String,
     onProjectPathChange: (String) -> Unit,
+    onFlashArgsChange: (String) -> Unit,
     onBuild: () -> Unit,
     onMonitor: () -> Unit,
     onFlash: () -> Unit,
+    onEnterBootloader: () -> Unit,
+    onReadChipId: () -> Unit,
     onCopy: () -> Unit,
 ) {
+    val previewConfig = state.config.copy(projectPath = projectPath, flashArgs = flashArgs)
     Text("ESP-IDF integration", style = MaterialTheme.typography.headlineSmall)
     OutlinedTextField(
         value = projectPath,
@@ -320,22 +300,40 @@ private fun EspIdfScreen(
         modifier = Modifier.fillMaxWidth()
     )
     Spacer(Modifier.height(8.dp))
+    OutlinedTextField(
+        value = flashArgs,
+        onValueChange = onFlashArgsChange,
+        label = { Text("Flash args") },
+        modifier = Modifier.fillMaxWidth()
+    )
+    Spacer(Modifier.height(8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(onClick = onBuild) { Text("Build") }
         Button(onClick = onMonitor) { Text("Monitor") }
         Button(onClick = onFlash) { Text("Flash") }
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = onEnterBootloader) {
+            Icon(Icons.Default.Psychology, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("Enter Bootloader")
+        }
+        OutlinedButton(onClick = onReadChipId) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null)
+            Spacer(Modifier.width(4.dp))
+            Text("Read chip_id")
+        }
         OutlinedButton(onClick = onCopy) {
             Icon(Icons.Default.ContentCopy, contentDescription = null)
             Spacer(Modifier.width(4.dp))
-            Text("Copy")
+            Text("Copy Flash Script")
         }
     }
     Spacer(Modifier.height(12.dp))
-    Text("Tip: if Termux intents are blocked, copy the script and run it manually in Termux.")
-    Spacer(Modifier.height(8.dp))
-    Text("Preview:", style = MaterialTheme.typography.titleMedium)
+    Text("Flash script preview", style = MaterialTheme.typography.titleMedium)
     Text(
-        TermuxIntegration.buildMonitorScript(state.config.copy(projectPath = projectPath)),
+        TermuxIntegration.buildFlashScript(previewConfig),
         fontFamily = FontFamily.Monospace
     )
     Spacer(Modifier.height(8.dp))
@@ -345,94 +343,6 @@ private fun EspIdfScreen(
             Text(line, fontFamily = FontFamily.Monospace)
         }
     }
-}
-
-private enum class BootPreset(val label: String) {
-    DEFAULT("Default"),
-    SWAP("Swap DTR/RTS"),
-    INVERT_DTR("Invert DTR"),
-    INVERT_RTS("Invert RTS"),
-    SWAP_INVERT("Swap + Invert both");
-}
-
-@Composable
-private fun BootloaderLabScreen(
-    state: com.example.espidfandroidbridge.bridge.BridgeUiState,
-    onEnterBootloader: () -> Unit,
-    onReset: () -> Unit,
-    onSetDtr: (Boolean) -> Unit,
-    onSetRts: (Boolean) -> Unit,
-    onApplyPreset: (BootPreset) -> Unit,
-    onProbe: () -> Unit,
-    onProbeFlash: () -> Unit,
-) {
-    Text("Bootloader lab", style = MaterialTheme.typography.headlineSmall)
-    Text("Use this page to force BOOT/RESET combinations and validate which one enters ROM download mode.")
-    Spacer(Modifier.height(8.dp))
-    Card(colors = CardDefaults.cardColors()) {
-        Column(Modifier.padding(12.dp)) {
-            Text("NEW: flash_id test enabled", style = MaterialTheme.typography.titleMedium)
-            Text("Use Read chip_id first, then Read flash_id, before trying Flash.")
-        }
-    }
-    Spacer(Modifier.height(8.dp))
-    Text("Current status", style = MaterialTheme.typography.titleMedium)
-    Text("USB: ${state.usbStatus}")
-    Text("Control: ${state.controlStatus}")
-    Text("Bootloader: ${state.bootloaderStatus}")
-    Text("DTR: ${state.dtr} • RTS: ${state.rts}")
-    Spacer(Modifier.height(12.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = onEnterBootloader) {
-            Icon(Icons.Default.Psychology, contentDescription = null)
-            Spacer(Modifier.width(4.dp))
-            Text("Auto BOOT")
-        }
-        Button(onClick = onReset) {
-            Icon(Icons.Default.Build, contentDescription = null)
-            Spacer(Modifier.width(4.dp))
-            Text("Reset")
-        }
-        OutlinedButton(onClick = onProbe) {
-            Icon(Icons.Default.PlayArrow, contentDescription = null)
-            Spacer(Modifier.width(4.dp))
-            Text("Read chip_id")
-        }
-        OutlinedButton(onClick = onProbeFlash) {
-            Icon(Icons.Default.ContentCopy, contentDescription = null)
-            Spacer(Modifier.width(4.dp))
-            Text("Read flash_id")
-        }
-    }
-    Spacer(Modifier.height(8.dp))
-    Text("Manual line control", style = MaterialTheme.typography.titleMedium)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { onSetDtr(true) }) { Text("DTR 1") }
-        OutlinedButton(onClick = { onSetDtr(false) }) { Text("DTR 0") }
-        OutlinedButton(onClick = { onSetRts(true) }) { Text("RTS 1") }
-        OutlinedButton(onClick = { onSetRts(false) }) { Text("RTS 0") }
-    }
-    Spacer(Modifier.height(8.dp))
-    Text("Boot combos", style = MaterialTheme.typography.titleMedium)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { onApplyPreset(BootPreset.DEFAULT) }) { Text("Default") }
-        Button(onClick = { onApplyPreset(BootPreset.SWAP) }) { Text("Swap") }
-        Button(onClick = { onApplyPreset(BootPreset.INVERT_DTR) }) { Text("Invert DTR") }
-    }
-    Spacer(Modifier.height(8.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { onApplyPreset(BootPreset.INVERT_RTS) }) { Text("Invert RTS") }
-        Button(onClick = { onApplyPreset(BootPreset.SWAP_INVERT) }) { Text("Swap + Invert") }
-    }
-    Spacer(Modifier.height(12.dp))
-    Card(colors = CardDefaults.cardColors()) {
-        Column(Modifier.padding(12.dp)) {
-            Text("Manual recipe", style = MaterialTheme.typography.titleMedium)
-            Text("1) Enter BOOT+RESET\n2) Release RESET\n3) Release BOOT\n4) Run Read chip_id")
-        }
-    }
-    Spacer(Modifier.height(12.dp))
-    Text("Tip: if the chip_id read fails, try a different preset or timing in Settings.")
 }
 
 @Composable
@@ -522,6 +432,7 @@ private fun runTermux(context: Context, clipboard: androidx.compose.ui.platform.
     val command = when (mode) {
         "flash" -> TermuxIntegration.buildFlashScript(config)
         "monitor" -> TermuxIntegration.buildMonitorScript(config)
+        "read-chip-id" -> TermuxIntegration.buildReadChipIdScript(config)
         "probe" -> TermuxIntegration.buildBootloaderProbeScript(config)
         "flash-id" -> TermuxIntegration.buildFlashIdScript(config)
         else -> TermuxIntegration.buildBuildScript(config)

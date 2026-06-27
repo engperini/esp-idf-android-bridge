@@ -4,6 +4,8 @@ import android.content.Context
 
 object BridgePreferences {
     private const val FILE = "bridge_prefs"
+    private const val K_VERSION = "prefs_version"
+    private const val CURRENT_VERSION = 2
     private const val K_TCP_PORT = "tcp_port"
     private const val K_CONTROL_PORT = "control_port"
     private const val K_BAUD = "baud_rate"
@@ -15,22 +17,25 @@ object BridgePreferences {
     private const val K_KEEP_ON = "keep_screen_on"
     private const val K_ENABLE_CONTROL = "enable_control_port"
     private const val K_PROJECT = "project_path"
+    private const val K_FLASH_ARGS = "flash_args"
     private const val K_TTY = "tty_path"
 
     fun load(context: Context): BridgeConfig {
         val prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+        val version = prefs.getInt(K_VERSION, 0)
         return BridgeConfig(
             tcpPort = prefs.getInt(K_TCP_PORT, 6667),
             controlPort = prefs.getInt(K_CONTROL_PORT, 6668),
             baudRate = prefs.getInt(K_BAUD, 115200),
             invertDtr = prefs.getBoolean(K_INVERT_DTR, false),
             invertRts = prefs.getBoolean(K_INVERT_RTS, false),
-            swapDtrRts = prefs.getBoolean(K_SWAP, false),
+            swapDtrRts = if (version < CURRENT_VERSION) true else prefs.getBoolean(K_SWAP, true),
             bootloaderTimingMs = prefs.getLong(K_BOOT_MS, 250L),
             resetPulseMs = prefs.getLong(K_RESET_MS, 120L),
             keepScreenOn = prefs.getBoolean(K_KEEP_ON, false),
             enableControlPort = prefs.getBoolean(K_ENABLE_CONTROL, true),
-            projectPath = prefs.getString(K_PROJECT, "") ?: "",
+            projectPath = prefs.getString(K_PROJECT, DEFAULT_PROJECT_PATH) ?: DEFAULT_PROJECT_PATH,
+            flashArgs = prefs.getString(K_FLASH_ARGS, DEFAULT_FLASH_ARGS) ?: DEFAULT_FLASH_ARGS,
             ttyPath = prefs.getString(K_TTY, "/tmp/ttyesp32") ?: "/tmp/ttyesp32"
         )
     }
@@ -49,7 +54,9 @@ object BridgePreferences {
             .putBoolean(K_KEEP_ON, config.keepScreenOn)
             .putBoolean(K_ENABLE_CONTROL, config.enableControlPort)
             .putString(K_PROJECT, config.projectPath)
+            .putString(K_FLASH_ARGS, config.flashArgs)
             .putString(K_TTY, config.ttyPath)
+            .putInt(K_VERSION, CURRENT_VERSION)
             .apply()
     }
 }

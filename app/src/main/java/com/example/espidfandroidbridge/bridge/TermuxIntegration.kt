@@ -8,7 +8,7 @@ import android.net.Uri
 
 object TermuxIntegration {
     fun buildMonitorScript(config: BridgeConfig): String = buildString {
-        val project = config.projectPath.ifBlank { "${'$'}HOME/ESP32-RoboEyes" }
+        val project = config.projectPath.ifBlank { DEFAULT_PROJECT_PATH }
         appendLine("#!/data/data/com.termux/files/usr/bin/bash")
         appendLine("set -euo pipefail")
         appendLine("PROJECT=${shellQuote(project)}")
@@ -19,7 +19,7 @@ object TermuxIntegration {
     }
 
     fun buildFlashScript(config: BridgeConfig): String = buildString {
-        val project = config.projectPath.ifBlank { "${'$'}HOME/ESP32-RoboEyes" }
+        val project = config.projectPath.ifBlank { DEFAULT_PROJECT_PATH }
         appendLine("#!/data/data/com.termux/files/usr/bin/bash")
         appendLine("set -euo pipefail")
         appendLine("PROJECT=${shellQuote(project)}")
@@ -27,6 +27,7 @@ object TermuxIntegration {
         appendLine("PORT=${config.tcpPort}")
         appendLine("CTRL_PORT=${config.controlPort}")
         appendLine("BAUD=${config.baudRate}")
+        appendLine("FLASH_ARGS=${shellQuote(config.flashArgs.ifBlank { DEFAULT_FLASH_ARGS })}")
         appendLine("ctrl_cmd() {")
         appendLine("  local cmd=\"${'$'}1\"")
         appendLine("  local response=\"\"")
@@ -50,18 +51,20 @@ object TermuxIntegration {
         appendLine("echo '[bridge] control post-check: STATUS'")
         appendLine("status_after=${'$'}(ctrl_cmd STATUS)")
         appendLine("echo \"[bridge] ${'$'}status_after\"")
-        appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" TTY=\"${'$'}TTY\" PORT=\"${'$'}PORT\" BAUD=\"${'$'}BAUD\" bash -lc 'cd /root/esp-idf && . ./export.sh; mkdir -p \"${'$'}(dirname \"${'$'}TTY\")\"; socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" >/tmp/ttyesp32.log 2>&1 & SOCAT_PID=${'$'}!; trap \"kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true\" EXIT; cd \"${'$'}PROJECT\"; idf.py -p \"${'$'}TTY\" -b \"${'$'}BAUD\" flash'")
+        appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" TTY=\"${'$'}TTY\" PORT=\"${'$'}PORT\" FLASH_ARGS=\"${'$'}FLASH_ARGS\" BAUD=\"${'$'}BAUD\" bash -lc 'cd /root/esp-idf && . ./export.sh; mkdir -p \"${'$'}(dirname \"${'$'}TTY\")\"; socat -d -d pty,raw,echo=0,link=\"${'$'}TTY\" tcp:127.0.0.1:\"${'$'}PORT\" >/tmp/ttyesp32.log 2>&1 & SOCAT_PID=${'$'}!; trap \"kill ${'$'}SOCAT_PID >/dev/null 2>&1 || true\" EXIT; cd \"${'$'}PROJECT/build\"; python -m esptool --chip esp32s3 -p \"${'$'}TTY\" -b \"${'$'}BAUD\" ${'$'}FLASH_ARGS'")
     }
 
     fun buildBuildScript(config: BridgeConfig): String = buildString {
-        val project = config.projectPath.ifBlank { "${'$'}HOME/ESP32-RoboEyes" }
+        val project = config.projectPath.ifBlank { DEFAULT_PROJECT_PATH }
         appendLine("#!/data/data/com.termux/files/usr/bin/bash")
         appendLine("set -euo pipefail")
         appendLine("PROJECT=${shellQuote(project)}")
         appendLine("proot-distro login ubuntu -- env PROJECT=\"${'$'}PROJECT\" bash -lc 'cd /root/esp-idf && . ./export.sh && cd \"${'$'}PROJECT\" && idf.py build'")
     }
 
-    fun buildBootloaderProbeScript(config: BridgeConfig): String = buildString {
+    fun buildBootloaderProbeScript(config: BridgeConfig): String = buildReadChipIdScript(config)
+
+    fun buildReadChipIdScript(config: BridgeConfig): String = buildString {
         appendLine("#!/data/data/com.termux/files/usr/bin/bash")
         appendLine("set -euo pipefail")
         appendLine("TTY=${shellQuote(config.ttyPath.ifBlank { "/tmp/ttyesp32" })}")
