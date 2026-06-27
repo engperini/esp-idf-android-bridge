@@ -369,6 +369,13 @@ private fun BootloaderLabScreen(
     Text("Bootloader lab", style = MaterialTheme.typography.headlineSmall)
     Text("Use this page to force BOOT/RESET combinations and validate which one enters ROM download mode.")
     Spacer(Modifier.height(8.dp))
+    Card(colors = CardDefaults.cardColors()) {
+        Column(Modifier.padding(12.dp)) {
+            Text("NEW: flash_id test enabled", style = MaterialTheme.typography.titleMedium)
+            Text("Use Read chip_id first, then Read flash_id, before trying Flash.")
+        }
+    }
+    Spacer(Modifier.height(8.dp))
     Text("Current status", style = MaterialTheme.typography.titleMedium)
     Text("USB: ${state.usbStatus}")
     Text("Control: ${state.controlStatus}")
